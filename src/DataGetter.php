@@ -66,7 +66,7 @@ class DataGetter implements ArrayAccess{
      * @see DataGetter::string_like()
      */
     public function numeric_inf(){
-        $val=is_object($this->val)?$this->string_like():$this->val;
+        $val=$this->obj2string()??$this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -80,7 +80,7 @@ class DataGetter implements ArrayAccess{
      */
     public function numeric(){
         if(is_float($this->val)) return is_finite($this->val)?$this->val:null;
-        $val=is_object($this->val)?$this->string_like():$this->val;
+        $val=$this->obj2string()??$this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -103,16 +103,19 @@ class DataGetter implements ArrayAccess{
         return null;
     }
 
+    private function obj2string(): ?string{
+        return (is_object($this->val) && method_exists($this->val, '__toString'))?strval($this->val):null;
+    }
+
     /**
      * Si el valor es un escalar o un objeto con el método mágico `__toString`, se convierte en string con {@see strval()}
      * @return string|null
      * @link https://www.php.net/manual/es/language.oop5.magic.php
      * @see is_scalar()
-     * @see is_object()
      */
     public function string_like(): ?string{
-        if(is_scalar($this->val) || (is_object($this->val) && method_exists($this->val, '__toString'))) return strval($this->val);
-        return null;
+        if(is_scalar($this->val)) return strval($this->val);
+        return $this->obj2string();
     }
 
     /**
