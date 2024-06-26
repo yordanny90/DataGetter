@@ -66,7 +66,7 @@ class DataGetter implements ArrayAccess{
      * @see DataGetter::string_like()
      */
     public function numeric_inf(){
-        $val=$this->obj2string()??$this->val;
+        $val=$this->obj2string() ?? $this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -80,7 +80,7 @@ class DataGetter implements ArrayAccess{
      */
     public function numeric(){
         if(is_float($this->val)) return is_finite($this->val)?$this->val:null;
-        $val=$this->obj2string()??$this->val;
+        $val=$this->obj2string() ?? $this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -104,7 +104,13 @@ class DataGetter implements ArrayAccess{
     }
 
     private function obj2string(): ?string{
-        return (is_object($this->val) && method_exists($this->val, '__toString'))?strval($this->val):null;
+        if(is_object($this->val)){
+            try{
+                return strval($this->val);
+            }catch(Error $e){
+            }
+        }
+        return null;
     }
 
     /**
