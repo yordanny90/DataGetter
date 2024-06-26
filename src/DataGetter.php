@@ -63,21 +63,25 @@ class DataGetter implements ArrayAccess{
     /**
      * @return float|int|string|INF|NAN|null
      * @see is_numeric()
+     * @see DataGetter::string_like()
      */
     public function numeric_inf(){
-        if(is_numeric($this->val)) return $this->val;
+        $val=is_object($this->val)?$this->string_like():$this->val;
+        if(is_numeric($val)) return $val;
         return null;
     }
 
     /**
      * @return float|int|string|null
-     * @see is_numeric()
      * @see is_float()
      * @see is_finite()
+     * @see DataGetter::string_like()
+     * @see is_numeric()
      */
     public function numeric(){
         if(is_float($this->val)) return is_finite($this->val)?$this->val:null;
-        if(is_numeric($this->val)) return $this->val;
+        $val=is_object($this->val)?$this->string_like():$this->val;
+        if(is_numeric($val)) return $val;
         return null;
     }
 
