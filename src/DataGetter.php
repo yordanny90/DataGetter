@@ -18,7 +18,7 @@
  * - Tiene funciones para encontrar el primer valor que cumpla con el criterio de tipo de dato
  * - Un objeto {@see DataGetter} se comporta como `string` si es necesario, el valor es generado por {@see DataGetter::string_like()}, pero en caso de `null` se convierte en un string vacío ("")
  */
-class DataGetter implements ArrayAccess{
+class DataGetter implements ArrayAccess, IteratorAggregate{
     private $val;
 
     public function __construct($v){
@@ -144,7 +144,7 @@ class DataGetter implements ArrayAccess{
      * @return iterable|null
      */
     public function iterable(): ?iterable{
-        if(!is_iterable($this->val)) return $this->val;
+        if(is_iterable($this->val)) return $this->val;
         return null;
     }
 
@@ -381,5 +381,9 @@ class DataGetter implements ArrayAccess{
 
     public function offsetUnset($offset): void{
         // Solo lectura
+    }
+
+    public function getIterator(): Traversable{
+        return $this->class_(Traversable::class) ?? (new ArrayIterator($this->array_like() ?? []));
     }
 }
