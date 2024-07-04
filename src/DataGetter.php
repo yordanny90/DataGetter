@@ -22,6 +22,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
     private $val;
 
     public function __construct($v){
+        if(is_a($v, self::class)) $v=$v->val();
         $this->val=$v;
     }
 
