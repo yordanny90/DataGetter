@@ -5,25 +5,39 @@
  *
  * > Requiere PHP 7.1+, 8.0+
  *
+ * - Los datos son de solo lectura, la escritura por medio de esta clase está deshabilitada y genera un {@see E_USER_NOTICE}
+ * - Tiene funciones para obtener el valor solo si el tipo de dato es el esperado, de lo contrario devuelve `null`
+ * - Tiene funciones para encontrar el primer valor que cumpla con el criterio de tipo de dato
+ * - Se comporta como `string` si es necesario, el valor es generado por {@see DataGetter::string_like()}, pero en caso de `null` se convierte en un string vacío ("")
+ * - Se comporta como un `iterador` si es necesario, pero en caso de `null` devuelve un iterador vacío
+ * - Devuelve el valor original cuando se convierte en JSON
+ *
  * Brinda varias formas de obtener valores y evitar errores:
  * ```php
  * $data=new DataGetter($_POST);
- * $r1=$data->A->B->C->val();
- * $r2=$data['A']['B']['C']->val();
- * $r3=$data->path('A/B/C')->val();
- * // Los valores de $r1, $r2 y $r3 son iguales
+ * $r1=$data->A->B->C->numeric();
+ * $r2=$data['A']['B']['C']->numeric();
+ * $r3=$data->path('A/B/C')->numeric();
+ * $r4=$data('A','B','C')->numeric();
+ * // Los valores de $r1, $r2, $r3 y $r4 son iguales
  * ```
  *
- * - Tiene funciones para obtener el valor solo si el tipo de dato es el esperado, de lo contrario devuelve `null`
- * - Tiene funciones para encontrar el primer valor que cumpla con el criterio de tipo de dato
- * - Un objeto {@see DataGetter} se comporta como `string` si es necesario, el valor es generado por {@see DataGetter::string_like()}, pero en caso de `null` se convierte en un string vacío ("")
+ * Puede comprobar la existencia de un dato con la funcion {@see isset}:
+ * ```php
+ * isset($data->A->B->C);
+ * isset($data['A']['B']['C']);
+ * ```
  */
-class DataGetter implements ArrayAccess, IteratorAggregate{
+class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     private $val;
 
-    public function __construct($v){
-        if(is_a($v, self::class)) $v=$v->val();
-        $this->val=$v;
+    public function __construct($value){
+        $this->_val($value);
+    }
+    
+    protected function _val($value){
+        if(is_a($value, self::class)) $value=$value->val();
+        $this->val=$value;
     }
 
     /**
@@ -142,11 +156,18 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
     }
 
     /**
-     * @return iterable|null
+     * @return iterable|null Devuelve el valor solo si es iterable
      */
     public function iterable(): ?iterable{
-        if(is_iterable($this->val)) return $this->val;
-        return null;
+        return is_a($this->val, Traversable::class)?$this->val:$this->array();
+    }
+
+    /**
+     * @return iterable|null Devuelve el valor si es iterable. Si el valor es un objeto no {@see Traversable}, se convierte en un array
+     * @see DataGetter::array_like()
+     */
+    public function iterable_like(): ?iterable{
+        return is_a($this->val, Traversable::class)?$this->val:$this->array_like();
     }
 
     public function array(): ?array{
@@ -159,47 +180,21 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
         return null;
     }
 
+    /**
+     * @return array|null Si el valor es un objeto, se convierte en un array
+     */
     public function array_like(): ?array{
         if(is_array($this->val)) return $this->val;
         if(is_object($this->val)) return get_object_vars($this->val);
         return null;
     }
 
+    /**
+     * @return object|null Si el valor es un array, se convierte en un objeto
+     */
     public function object_like(): ?object{
         if(is_array($this->val)) return (object)$this->val;
         if(is_object($this->val)) return $this->val;
-        return null;
-    }
-
-    public function is_a(string $class): bool{
-        return is_a($this->val, $class);
-    }
-
-    public function class_(string $class): ?object{
-        return $this->is_a($class)?$this->val:null;
-    }
-
-    /**
-     * Devuelve el nombre de la primera propiedad en la estructura que exista
-     * @param string ...$names Nombres a analizar
-     * @return string|null
-     */
-    public function index_exists(string ...$names): ?string{
-        foreach($names as $name){
-            if($this->__isset($name)) return $name;
-        }
-        return null;
-    }
-
-    /**
-     * Devuelve el nombre de la primera propiedad en la estructura que no exista
-     * @param string ...$names Nombres a analizar
-     * @return string|null
-     */
-    public function index_missing(string ...$names): ?string{
-        foreach($names as $name){
-            if(!$this->__isset($name)) return $name;
-        }
         return null;
     }
 
@@ -211,7 +206,16 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
      */
     public function path(string $path, string $splitter='/'): self{
         if($splitter==='') return new self(null);
-        $index=explode($splitter, $path);
+        $names=explode($splitter, $path);
+        return $this(...$names);
+    }
+
+    /**
+     * Obtiene la ruta de índices dentro del valor actual
+     * @param string ...$index
+     * @return $this
+     */
+    public function __invoke(string ...$index): self{
         $val=$this->val;
         foreach($index as $name){
             if($val===null) break;
@@ -219,7 +223,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
                 $val=($val[$name] ?? null);
                 continue;
             }
-            if(is_object($this->val)){
+            if(is_object($val)){
                 $val=($val->$name ?? null);
                 continue;
             }
@@ -245,6 +249,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
     const IS_ARRAY_LIKE=14;
     const IS_OBJECT=15;
     const IS_OBJECT_LIKE=16;
+    const IS_ITERABLE_LIKE=17;
 
     private const MATCH_LIST=[
         self::IS_NOT_NULL=>'val',
@@ -264,6 +269,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
         self::IS_ARRAY_LIKE=>'array_like',
         self::IS_OBJECT=>'object',
         self::IS_OBJECT_LIKE=>'object_like',
+        self::IS_ITERABLE_LIKE=>'iterable_like',
     ];
 
     /**
@@ -273,7 +279,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
      * @return string|null
      */
     public function index_match(int $match, string ...$names): ?string{
-        $method=static::MATCH_LIST[$match] ?? null;
+        $method=self::MATCH_LIST[$match] ?? null;
         if(!$method) return null;
         foreach($names as $name){
             if(call_user_func([
@@ -291,7 +297,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
      * @return string|null
      */
     public function index_mismatch(int $match, string ...$names): ?string{
-        $method=static::MATCH_LIST[$match] ?? null;
+        $method=self::MATCH_LIST[$match] ?? null;
         if(!$method) return null;
         foreach($names as $name){
             if(call_user_func([
@@ -309,7 +315,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
      * @return string|null
      */
     public function path_match(int $match, string ...$paths): ?string{
-        $method=static::MATCH_LIST[$match] ?? null;
+        $method=self::MATCH_LIST[$match] ?? null;
         if(!$method) return null;
         foreach($paths as $path){
             if(call_user_func([
@@ -327,7 +333,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
      * @return string|null
      */
     public function path_mismatch(int $match, string ...$paths): ?string{
-        $method=static::MATCH_LIST[$match] ?? null;
+        $method=self::MATCH_LIST[$match] ?? null;
         if(!$method) return null;
         foreach($paths as $path){
             if(call_user_func([
@@ -340,23 +346,15 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
 
     public function __get($name): self{
         if($this->val===null) return $this;
-        if(is_array($this->val)){
-            return new self($this->val[$name] ?? null);
-        }
-        if(is_object($this->val)){
-            return new self($this->val->$name ?? null);
-        }
+        if(is_array($this->val)) return new self($this->val[$name] ?? null);
+        if(is_object($this->val)) return new self($this->val->$name ?? null);
         return new self(null);
     }
 
     public function __isset($name): bool{
         if($this->val===null) return false;
-        if(is_array($this) && array_key_exists($name, $this->val)){
-            return true;
-        }
-        if(is_object($this->val) && property_exists($this->val, $name) && array_key_exists($name, $this->array_like())){
-            return true;
-        }
+        if(is_array($this->val)) return isset($this->val[$name]);
+        if(is_object($this->val)) return isset($this->val->$name);
         return false;
     }
 
@@ -373,18 +371,38 @@ class DataGetter implements ArrayAccess, IteratorAggregate{
     }
 
     public function __set($name, $value): void{
-        // Solo lectura
+        trigger_error('Read-only properties', E_USER_NOTICE);
+    }
+
+    public function __unset($name): void{
+        trigger_error('Read-only properties', E_USER_NOTICE);
     }
 
     public function offsetSet($offset, $value): void{
-        // Solo lectura
+        trigger_error('Read-only properties', E_USER_NOTICE);
     }
 
     public function offsetUnset($offset): void{
-        // Solo lectura
+        trigger_error('Read-only properties', E_USER_NOTICE);
     }
 
     public function getIterator(): Traversable{
-        return $this->class_(Traversable::class) ?? (new ArrayIterator($this->array_like() ?? []));
+        if(is_a($this->val, Traversable::class)) return $this->val;
+        return new ArrayIterator($this->array_like() ?? []);
+    }
+
+    /**
+     * @return mixed
+     */
+    public function jsonSerialize(): mixed{
+        return $this->val();
+    }
+
+    public function __serialize(): array{
+        return [$this->val()];
+    }
+
+    public function __unserialize(array $data): void{
+        $this->_val($data[0] ?? null);
     }
 }
