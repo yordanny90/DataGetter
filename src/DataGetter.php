@@ -170,6 +170,19 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return is_a($this->val, Traversable::class)?$this->val:$this->array_like();
     }
 
+    public static function array_is_list(array $array){
+        $i=0;
+        foreach($array AS $k=>$v){
+            if($k!==$i++) return false;
+        }
+        return true;
+    }
+
+    public function array_list(): ?array{
+        if(is_array($this->val) && self::array_is_list($this->val)) return $this->val;
+        return null;
+    }
+
     public function array(): ?array{
         if(is_array($this->val)) return $this->val;
         return null;
@@ -206,8 +219,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      */
     public function path(string $path, string $splitter='/'): self{
         if($splitter==='') return new self(null);
-        $names=explode($splitter, $path);
-        return $this(...$names);
+        return $this(...explode($splitter, $path));
     }
 
     /**
@@ -250,6 +262,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     const IS_OBJECT=15;
     const IS_OBJECT_LIKE=16;
     const IS_ITERABLE_LIKE=17;
+    const IS_ARRAY_LIST=18;
 
     private const MATCH_LIST=[
         self::IS_NOT_NULL=>'val',
@@ -270,6 +283,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         self::IS_OBJECT=>'object',
         self::IS_OBJECT_LIKE=>'object_like',
         self::IS_ITERABLE_LIKE=>'iterable_like',
+        self::IS_ARRAY_LIST=>'array_list',
     ];
 
     /**
