@@ -81,7 +81,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @see DataGetter::string_like()
      */
     public function numeric_inf(){
-        $val=$this->obj2string() ?? $this->val;
+        $val=static::obj2string($val) ?? $this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -95,7 +95,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      */
     public function numeric(){
         if(is_float($this->val)) return is_finite($this->val)?$this->val:null;
-        $val=$this->obj2string() ?? $this->val;
+        $val=static::obj2string($this->val) ?? $this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -118,10 +118,10 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return null;
     }
 
-    private function obj2string(): ?string{
-        if(is_object($this->val)){
+    private static function obj2string($val): ?string{
+        if(is_object($val)){
             try{
-                return strval($this->val);
+                return strval($val);
             }catch(Error $e){
             }
         }
@@ -136,7 +136,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      */
     public function string_like(): ?string{
         if(is_scalar($this->val)) return strval($this->val);
-        return $this->obj2string();
+        return static::obj2string($this->val);
     }
 
     /**
@@ -170,7 +170,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return is_a($this->val, Traversable::class)?$this->val:$this->array_like();
     }
 
-    public static function array_is_list(array $array){
+    private static function array_is_list(array $array){
         $i=0;
         foreach($array AS $k=>$v){
             if($k!==$i++) return false;
@@ -418,5 +418,83 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
 
     public function __unserialize(array $data): void{
         $this->_val($data[0] ?? null);
+    }
+
+    private static function _depth($data, int $max, int $level=0): int{
+        if($data===null) return $level;
+        $max_lvl=++$level;
+        if($max_lvl>$max) return $max_lvl;
+        if(!is_array($data) && !is_object($data)) return $max_lvl;
+        foreach(get_object_vars((object)$data) AS $v){
+            $lvl=static::_depth($v, $max, $level);
+            if($lvl>$max_lvl){
+                $max_lvl=$lvl;
+                if($max_lvl>$max) return $max_lvl;
+            }
+        }
+        return $max_lvl;
+    }
+
+    /**
+     * Calcula la profundidad del valor actual con un limite en el conteo.
+     *
+     * Ejemplo: Si la profuncidad máxima indicada es 256, y el valor es recursivo (profundidad infinita), el resultado será 257
+     * @param int $max_depth Default: 256. Establece una profundidad máxima en el conteo. Esto evita un conteo infinito por valores recursivos
+     * @return int
+     */
+    public function count_depth(int $max_depth=256): int{
+        return static::_depth($this->val, $max_depth);
+    }
+
+    private static function _convert($data, int $max_depth, int $options, array $last=[]){
+        if($data===null || is_scalar($data)) return $data;
+        if(!is_array($data) && !is_object($data)) return null;
+        if(in_array($data, $last, true)) return null;
+        if(($options & self::OPT_TO_STRING) && is_string($new=static::obj2string($data))) return $new;
+        $last[]=&$data;
+        if(--$max_depth<=0) return null;
+        $new=array_map(function($v) use ($max_depth, $options, $last){
+            return static::_convert($v, $max_depth, $options, $last);
+        }, is_array($data)?$data:get_object_vars($data));
+        if(($options & self::OPT_VACUUM)){
+            $new=array_filter($new, function($v){ return !is_null($v); });
+            if(count($new)===0) return null;
+        }
+        if(!($options & self::OPT_TO_ARRAY) && is_object($data)) $new=(object)$new;
+        return $new;
+    }
+
+    /**
+     * Convierte los object en array
+     * @see DataGetter::convert()
+     */
+    const OPT_TO_ARRAY=1<<0;
+    /**
+     * Elimina los array y object vacios, y los valores null
+     * @see DataGetter::convert()
+     */
+    const OPT_VACUUM=1<<1;
+    /**
+     * Convierte los objetos en string cuando este lo permite
+     *
+     * Esta opción se ejecuta antes que {@see DataGetter::OPT_TO_ARRAY}
+     * @see DataGetter::convert()
+     */
+    const OPT_TO_STRING=1<<2;
+
+    /**
+     * ## Importante: Al normalizar los datos, se pierden algunos tipos no admitidos como los resource, y comportamientos especiales de objetos como la conversión automática a string (por ejemplo los object {@see GMP})
+     * Crea una copia conservando solo valores de tipo scalar, null, array y object, si no es permitido el valor se convierte en NULL
+     *
+     * Los objetos se convierten en stdClass, si no se usa {@see DataGetter::OPT_TO_ARRAY}
+     *
+     * Los valores de tipo array y object se rastrean para truncar la recursividad
+     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado
+     * @param int $options Opciones definidas por la constantes {@see DataGetter}::OPT_*. ejemplo para limpiar null y convertir los objetos en array: DataGetter::OPT_VACUUM|DataGetter::OPT_TO_ARRAY
+     * @return $this
+     * @see DataGetter::count_depth()
+     */
+    public function convert(int $max_depth=256, int $options=0): self{
+        return new self(static::_convert($this->val, $max_depth, $options));
     }
 }
