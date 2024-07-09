@@ -483,7 +483,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     const OPT_TO_STRING=1<<2;
 
     /**
-     * ## Importante: Al normalizar los datos, se pierden algunos tipos no admitidos como los resource, y comportamientos especiales de objetos como la conversión automática a string (por ejemplo los object {@see GMP})
+     * ## Importante: Al convertir los datos, se pierden algunos tipos no admitidos como los resource, y comportamientos especiales de objetos como la conversión automática a string (por ejemplo los object {@see GMP})
      * Crea una copia conservando solo valores de tipo scalar, null, array y object, si no es permitido el valor se convierte en NULL
      *
      * Los objetos se convierten en stdClass, si no se usa {@see DataGetter::OPT_TO_ARRAY}
