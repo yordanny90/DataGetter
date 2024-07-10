@@ -460,25 +460,27 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * Los objetos se convierten en stdClass, si no se usa {@see DataGetter::OPT_TO_ARRAY}
      *
      * Los valores de tipo array y object se rastrean para truncar la recursividad
-     * @param int $options Opciones definidas por la constantes {@see DataGetter}::OPT_*. ejemplo para limpiar null y convertir los objetos en array: DataGetter::OPT_VACUUM|DataGetter::OPT_TO_ARRAY
-     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado. Ver {@see DataGetter::OPT_KEEP_EXCEEDED}
+     * @param int $options Opciones definidas por la constantes {@see DataGetter}::OPT_*. Ejemplo para limpiar vacíos y convertir los objetos en array: {@see DataGetter::OPT_VACUUM}|{@see DataGetter::OPT_TO_ARRAY}
+     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado. Ver {@see DataGetter::OPT_INGORE_RECURSION}
      * @return $this
      * @see DataGetter::count_depth()
      */
     public function convert(int $options=0, int $max_depth=256): self{
-        return new self(static::_convert($this->val, $options, $max_depth));
+        return new self(static::_convert($this->val, !($options & self::OPT_INGORE_RECURSION), $options, $max_depth));
     }
 
-    private static function _convert($data, int $opt, int $max, ...$past){
+    private static function _convert($data, bool $recursion, int $opt, int $max, ...$past){
         if($data===null || is_scalar($data)) return $data;
         if(!is_array($data) && !is_object($data)) return null;
-        if(in_array($data, $past, true))
-            return null;
+        if($recursion && in_array($data, $past, true)) return null;
         if(($opt & self::OPT_TO_STRING) && is_string($new=static::obj2string($data))) return $new;
-        if(--$max<=0) return ($opt & self::OPT_KEEP_EXCEEDED)?$data:null;
+        if(--$max<0 && $recursion && ($opt & self::OPT_KEEP_EXCEEDED)) return $data;
         $new=[];
-        foreach(is_array($data)?$data:get_object_vars($data) AS $k=>$v){
-            $new[$k]=static::_convert($v, $opt, $max, $data, ...$past);
+        if($max>0 || ($recursion && ($opt & self::OPT_KEEP_EXCEEDED))){
+            if($recursion) $past[]=&$data;
+            foreach(is_array($data)?$data:get_object_vars($data) as $k=>$v){
+                $new[$k]=static::_convert($v, $recursion, $opt, $max, ...$past);
+            }
         }
         /* */
         if(($opt & self::OPT_VACUUM)){
@@ -507,9 +509,19 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      */
     const OPT_TO_STRING=4;
     /**
-     * Hace que se conserven los valores excedentes originales en el resultado (la profundidad de {@see DataGetter::convert()} ya no trunca el resultado)
+     * Provoca que se conserven los valores excedentes originales en el resultado (la profundidad de {@see DataGetter::convert()} ya no trunca el resultado)
      *
      * ## CUIDADO: Esto puede provocar que no se eliminen valores resursivos o tipos de datos no admitidos por la función de conversión
+     *
+     * No es compatible con {@see DataGetter::OPT_INGORE_RECURSION}
      */
     const OPT_KEEP_EXCEEDED=8;
+    /**
+     * Provoca que se ignore la detección y eliminación de valores recursivos en el resultado (la profundidad de {@see DataGetter::convert()} es lo único que trunca el resultado)
+     *
+     * ## CUIDADO: Esto puede provocar que se conserve una gran cantidad de datos repetidos, si existe recursividad
+     *
+     * No es compatible con {@see DataGetter::OPT_KEEP_EXCEEDED}
+     */
+    const OPT_INGORE_RECURSION=16;
 }
