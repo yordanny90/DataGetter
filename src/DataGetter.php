@@ -446,21 +446,21 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return static::_depth($this->val, $max_depth);
     }
 
-    private static function _convert($data, int $max_depth, int $options, array $last=[]){
+    private static function _convert($data, int $opt, int $max, array $last=[]){
         if($data===null || is_scalar($data)) return $data;
         if(!is_array($data) && !is_object($data)) return null;
         if(in_array($data, $last, true)) return null;
-        if(($options & self::OPT_TO_STRING) && is_string($new=static::obj2string($data))) return $new;
+        if(($opt & self::OPT_TO_STRING) && is_string($new=static::obj2string($data))) return $new;
         $last[]=&$data;
-        if(--$max_depth<=0) return null;
-        $new=array_map(function($v) use ($max_depth, $options, $last){
-            return static::_convert($v, $max_depth, $options, $last);
+        if(--$max<=0) return ($opt & self::OPT_KEEP_EXCEEDED)?$data:null;
+        $new=array_map(function($v) use ($opt, $max, $last){
+            return static::_convert($v, $opt, $max, $last);
         }, is_array($data)?$data:get_object_vars($data));
-        if(($options & self::OPT_VACUUM)){
+        if(($opt & self::OPT_VACUUM)){
             $new=array_filter($new, function($v){ return !is_null($v); });
             if(count($new)===0) return null;
         }
-        if(!($options & self::OPT_TO_ARRAY) && is_object($data)) $new=(object)$new;
+        if(!($opt & self::OPT_TO_ARRAY) && is_object($data)) $new=(object)$new;
         return $new;
     }
 
@@ -481,6 +481,12 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @see DataGetter::convert()
      */
     const OPT_TO_STRING=1<<2;
+    /**
+     * Hace que se conserven los valores excedentes originales en el resultado (la profundidad de {@see DataGetter::convert()} ya no trunca el resultado)
+     *
+     * ## CUIDADO: Esto puede provocar que no se eliminen valores resursivos o tipos de datos no admitidos por la función de conversión
+     */
+    const OPT_KEEP_EXCEEDED=1<<3;
 
     /**
      * ## Importante: Al convertir los datos, se pierden algunos tipos no admitidos como los resource, y comportamientos especiales de objetos como la conversión automática a string (por ejemplo los object {@see GMP})
@@ -489,12 +495,12 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * Los objetos se convierten en stdClass, si no se usa {@see DataGetter::OPT_TO_ARRAY}
      *
      * Los valores de tipo array y object se rastrean para truncar la recursividad
-     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado
      * @param int $options Opciones definidas por la constantes {@see DataGetter}::OPT_*. ejemplo para limpiar null y convertir los objetos en array: DataGetter::OPT_VACUUM|DataGetter::OPT_TO_ARRAY
+     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado. Ver {@see DataGetter::OPT_KEEP_EXCEEDED}
      * @return $this
      * @see DataGetter::count_depth()
      */
-    public function convert(int $max_depth=256, int $options=0): self{
-        return new self(static::_convert($this->val, $max_depth, $options));
+    public function convert(int $options=0, int $max_depth=256): self{
+        return new self(static::_convert($this->val, $options, $max_depth));
     }
 }
