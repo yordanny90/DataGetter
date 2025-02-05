@@ -29,13 +29,13 @@
  * ```
  */
 class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
-    private $val;
+    protected $val;
 
-    public function __construct($value){
-        $this->_val($value);
+    public function __construct($value=null){
+        if($value!==null) $this->set($value);
     }
     
-    protected function _val($value){
+    protected function set($value){
         if(is_a($value, self::class)) $value=$value->val();
         $this->val=$value;
     }
@@ -48,6 +48,14 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     }
 
     /**
+     * Returns {@see gettype()}
+     * @return string
+     */
+    public function type(): string{
+        return gettype($this->val);
+    }
+
+    /**
      * @return int|null
      * @see is_int()
      */
@@ -57,7 +65,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     }
 
     /**
-     * @return float|INF|NAN|null
+     * @return float|null
      * @see is_float()
      */
     public function float_inf(): ?float{
@@ -76,12 +84,12 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     }
 
     /**
-     * @return float|int|string|INF|NAN|null
+     * @return float|int|string|null
      * @see is_numeric()
      * @see DataGetter::string_like()
      */
     public function numeric_inf(){
-        $val=static::obj2string($val) ?? $this->val;
+        $val=static::obj2string($this->val) ?? $this->val;
         if(is_numeric($val)) return $val;
         return null;
     }
@@ -170,7 +178,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return is_a($this->val, Traversable::class)?$this->val:$this->array_like();
     }
 
-    private static function array_is_list(array $array){
+    private static function array_is_list(array $array): bool{
         $i=0;
         foreach($array AS $k=>$v){
             if($k!==$i++) return false;
@@ -213,13 +221,11 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
 
     /**
      * Obtiene una ruta dentro del valor actual
-     * @param string $path Ruta de multiples niveles
-     * @param string $splitter Separador de la rutas. Default: "/"
+     * @param string $path Ruta de multiples niveles. El separador de la rutas: "/"
      * @return $this
      */
-    public function path(string $path, string $splitter='/'): self{
-        if($splitter==='') return new self(null);
-        return $this(...explode($splitter, $path));
+    public function path(string $path): static{
+        return $this(...explode('/', $path));
     }
 
     /**
@@ -227,21 +233,12 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @param string ...$index
      * @return $this
      */
-    public function __invoke(string ...$index): self{
-        $val=$this->val;
+    public function __invoke(string ...$index): static{
+        $res=$this;
         foreach($index as $name){
-            if($val===null) break;
-            if(is_array($val)){
-                $val=($val[$name] ?? null);
-                continue;
-            }
-            if(is_object($val)){
-                $val=($val->$name ?? null);
-                continue;
-            }
-            $val=null;
+            $res=$res[$name];
         }
-        return new self($val);
+        return $res;
     }
 
     const IS_NOT_NULL=0;
@@ -358,11 +355,15 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return null;
     }
 
-    public function __get($name): self{
-        if($this->val===null) return $this;
-        if(is_array($this->val)) return new self($this->val[$name] ?? null);
-        if(is_object($this->val)) return new self($this->val->$name ?? null);
-        return new self(null);
+    public function __get($name): static{
+        $res=new static();
+        if(is_array($this->val) && isset($this->val[$name])){
+            $res->val=&$this->val[$name];
+        }
+        if(is_object($this->val) && isset($this->val->$name)){
+            $res->val=&$this->val->$name;
+        }
+        return $res;
     }
 
     public function __isset($name): bool{
@@ -372,7 +373,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return false;
     }
 
-    public function offsetGet($offset): self{
+    public function offsetGet($offset): static{
         return $this->__get($offset);
     }
 
@@ -393,11 +394,11 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     }
 
     public function offsetSet($offset, $value): void{
-        trigger_error('Read-only properties', E_USER_NOTICE);
+        $this->__set($offset, $value);
     }
 
     public function offsetUnset($offset): void{
-        trigger_error('Read-only properties', E_USER_NOTICE);
+        $this->__unset($offset);
     }
 
     public function getIterator(): Traversable{
@@ -417,7 +418,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     }
 
     public function __unserialize(array $data): void{
-        $this->_val($data[0] ?? null);
+        $this->set($data[0] ?? null);
     }
 
     private static function _depth($data, int $max): int{
@@ -461,25 +462,27 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      *
      * Los valores de tipo array y object se rastrean para truncar la recursividad
      * @param int $options Opciones definidas por la constantes {@see DataGetter}::OPT_*. Ejemplo para limpiar vacíos y convertir los objetos en array: {@see DataGetter::OPT_VACUUM}|{@see DataGetter::OPT_TO_ARRAY}
-     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado. Ver {@see DataGetter::OPT_INGORE_RECURSION}
+     * @param int $max_depth Default: 256. Establece una profundidad máxima que trunca el resultado. Ver {@see DataGetter::OPT_IGNORE_RECURSION}
      * @return $this
      * @see DataGetter::count_depth()
      */
-    public function convert(int $options=0, int $max_depth=256): self{
-        return new self(static::_convert($this->val, !($options & self::OPT_INGORE_RECURSION), $options, $max_depth));
+    public function convert(int $options=0, int $max_depth=256): static{
+        $res=new static();
+        $res->set(static::_convert($this->val, !($options & self::OPT_IGNORE_RECURSION), $options, $max_depth));
+        return $res;
     }
 
-    private static function _convert($data, bool $recursion, int $opt, int $max, ...$past){
+    private static function _convert($data, bool $rm_recursion, int $opt, int $max, array $past=[]){
         if($data===null || is_scalar($data)) return $data;
         if(!is_array($data) && !is_object($data)) return null;
-        if($recursion && in_array($data, $past, true)) return null;
+        if($rm_recursion && in_array($data, $past, true)) return null;
         if(($opt & self::OPT_TO_STRING) && is_string($new=static::obj2string($data))) return $new;
-        if(--$max<0 && $recursion && ($opt & self::OPT_KEEP_EXCEEDED)) return $data;
+        if(--$max<0 && $rm_recursion && ($opt & self::OPT_KEEP_EXCEEDED)) return $data;
         $new=[];
-        if($max>0 || ($recursion && ($opt & self::OPT_KEEP_EXCEEDED))){
-            if($recursion) $past[]=&$data;
+        if($max>0 || ($rm_recursion && ($opt & self::OPT_KEEP_EXCEEDED))){
+            if($rm_recursion && strstr(print_r($data,1),"\n *RECURSION*\n",1)!==false) $past[]=&$data;
             foreach(is_array($data)?$data:get_object_vars($data) as $k=>$v){
-                $new[$k]=static::_convert($v, $recursion, $opt, $max, ...$past);
+                $new[$k]=static::_convert($v, $rm_recursion, $opt, $max, $past);
             }
         }
         /* */
@@ -513,7 +516,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      *
      * ## CUIDADO: Esto puede provocar que no se eliminen valores resursivos o tipos de datos no admitidos por la función de conversión
      *
-     * No es compatible con {@see DataGetter::OPT_INGORE_RECURSION}
+     * No es compatible con {@see DataGetter::OPT_IGNORE_RECURSION}
      */
     const OPT_KEEP_EXCEEDED=8;
     /**
@@ -523,5 +526,5 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      *
      * No es compatible con {@see DataGetter::OPT_KEEP_EXCEEDED}
      */
-    const OPT_INGORE_RECURSION=16;
+    const OPT_IGNORE_RECURSION=16;
 }
