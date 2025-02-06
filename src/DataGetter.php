@@ -137,7 +137,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
     }
 
     /**
-     * Si el valor es un escalar o un objeto con el método mágico `__toString`, se convierte en string con {@see strval()}
+     * Si el valor es un escalar o un objeto con el magic method `__toString`, se convierte en string con {@see strval()}
      * @return string|null
      * @link https://www.php.net/manual/es/language.oop5.magic.php
      * @see is_scalar()
@@ -225,7 +225,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @return $this
      */
     public function path(string $path): static{
-        return $this(...explode('/', $path));
+        return $this->route(...explode('/', $path));
     }
 
     /**
@@ -233,10 +233,10 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @param string ...$index
      * @return $this
      */
-    public function __invoke(string ...$index): static{
+    public function route(string ...$index): static{
         $res=$this;
         foreach($index as $name){
-            $res=$res[$name];
+            $res=$res->$name;
         }
         return $res;
     }
@@ -467,22 +467,28 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @see DataGetter::count_depth()
      */
     public function convert(int $options=0, int $max_depth=256): static{
-        $res=new static();
-        $res->set(static::_convert($this->val, !($options & self::OPT_IGNORE_RECURSION), $options, $max_depth));
+        $arr_rec=$obj_rec=null;
+        if(!($options & self::OPT_IGNORE_RECURSION)){
+            $arr_rec=preg_match('/=> Array\r?\n \*RECURSION\*\r?\n/', print_r($this->val, true))>0?[]:null;
+            $obj_rec=preg_match('/=> .+ Object\r?\n \*RECURSION\*\r?\n/', print_r($this->val, true))>0?[]:null;
+        }
+        $res=new static(static::_convert($this->val, $arr_rec, $obj_rec, $options, $max_depth));
         return $res;
     }
 
-    private static function _convert($data, bool $rm_recursion, int $opt, int $max, array $past=[]){
+    private static function _convert($data, ?array $arr_recursion, ?array $obj_recursion, int $opt, int $max){
         if($data===null || is_scalar($data)) return $data;
         if(!is_array($data) && !is_object($data)) return null;
-        if($rm_recursion && in_array($data, $past, true)) return null;
+        if($arr_recursion!==null && is_array($data) && in_array($data, $arr_recursion, true)) return null;
+        elseif($obj_recursion!==null && is_object($data) && in_array($data, $obj_recursion, true)) return null;
         if(($opt & self::OPT_TO_STRING) && is_string($new=static::obj2string($data))) return $new;
-        if(--$max<0 && $rm_recursion && ($opt & self::OPT_KEEP_EXCEEDED)) return $data;
         $new=[];
-        if($max>0 || ($rm_recursion && ($opt & self::OPT_KEEP_EXCEEDED))){
-            if($rm_recursion && strstr(print_r($data,1),"\n *RECURSION*\n",1)!==false) $past[]=&$data;
+        --$max;
+        if($max>0){
+            if($arr_recursion!==null && is_array($data)) $arr_recursion[]=&$data;
+            elseif($obj_recursion!==null && is_object($data)) $obj_recursion[]=&$data;
             foreach(is_array($data)?$data:get_object_vars($data) as $k=>$v){
-                $new[$k]=static::_convert($v, $rm_recursion, $opt, $max, $past);
+                $new[$k]=static::_convert($v, $arr_recursion, $obj_recursion, $opt, $max);
             }
         }
         /* */
@@ -512,19 +518,9 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      */
     const OPT_TO_STRING=4;
     /**
-     * Provoca que se conserven los valores excedentes originales en el resultado (la profundidad de {@see DataGetter::convert()} ya no trunca el resultado)
-     *
-     * ## CUIDADO: Esto puede provocar que no se eliminen valores resursivos o tipos de datos no admitidos por la función de conversión
-     *
-     * No es compatible con {@see DataGetter::OPT_IGNORE_RECURSION}
-     */
-    const OPT_KEEP_EXCEEDED=8;
-    /**
      * Provoca que se ignore la detección y eliminación de valores recursivos en el resultado (la profundidad de {@see DataGetter::convert()} es lo único que trunca el resultado)
      *
      * ## CUIDADO: Esto puede provocar que se conserve una gran cantidad de datos repetidos, si existe recursividad
-     *
-     * No es compatible con {@see DataGetter::OPT_KEEP_EXCEEDED}
      */
-    const OPT_IGNORE_RECURSION=16;
+    const OPT_IGNORE_RECURSION=8;
 }
