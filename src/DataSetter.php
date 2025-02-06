@@ -34,8 +34,8 @@ class DataSetter extends DataGetter{
      */
     protected $name;
 
-    public function __construct(){
-        parent::__construct();
+    public function __construct($value=null){
+        parent::__construct($value);
     }
 
     /**
@@ -45,13 +45,36 @@ class DataSetter extends DataGetter{
         return new DataGetter($this->val);
     }
 
+    /**
+     * Asigna un nuevo valor
+     * @param $value
+     * @return void
+     */
     public function set($value){
         if($this->parent){
-            $this->val=&$this->parent->fix($this->name);
+            $this->val=&$this->parent->fix($this->name, false);
             $this->parent=null;
             $this->name=null;
         }
         parent::set($value);
+    }
+
+    /**
+     * Asigna un nuevo valor solo si el valor actual no es NULL
+     * @param $value
+     * @return bool TRUE si el nuevo valor se asignó
+     */
+    public function setIFNULL($value){
+        if($this->parent){
+            $this->val=&$this->parent->fix($this->name, false);
+            $this->parent=null;
+            $this->name=null;
+        }
+        if($this->val===null){
+            parent::set($value);
+            return true;
+        }
+        return false;
     }
 
     public function __get($name): static{
@@ -63,7 +86,7 @@ class DataSetter extends DataGetter{
         return $res;
     }
 
-    private function &fix($name): mixed{
+    private function &fix($name, bool $replace=true): mixed{
         if($this->parent){
             $this->val=&$this->parent->fix($this->name);
             $this->parent=null;
@@ -73,11 +96,19 @@ class DataSetter extends DataGetter{
             if(!is_array($this->val) && !is_object($this->val)) $this->val=[];
         }
         if(is_array($this->val)){
+            if(!$replace){
+                if(!isset($this->val[$name])) $this->val[$name]=null;
+                return $this->val[$name];
+            }
             if(!isset($this->val[$name])) $this->val[$name]=[];
             if(!is_array($this->val[$name]) && !is_object($this->val[$name])) $this->val[$name]=[];
             return $this->val[$name];
         }
         else{
+            if(!$replace){
+                if(!isset($this->val->$name)) $this->val->$name=null;
+                return $this->val->$name;
+            }
             if(!isset($this->val->$name)) $this->val->$name=[];
             if(!is_array($this->val->$name) && !is_object($this->val->$name)) $this->val->$name=[];
             return $this->val->$name;
@@ -85,26 +116,7 @@ class DataSetter extends DataGetter{
     }
 
     public function __set($name, $value): void{
-        if($this->parent){
-            $this->val=&$this->parent->fix($this->name);
-            $this->parent=null;
-            $this->name=null;
-        }
-        else{
-            if(!is_array($this->val) && !is_object($this->val)) $this->val=[];
-        }
-        if(is_a($value, DataGetter::class)) $value=$value->val;
-        if(is_array($this->val)){
-            if($name===null) $this->val[]=$value;
-            else $this->val[$name]=$value;
-        }
-        else{
-            if($name===null){
-                $this->val=(array)$this->val;
-                $this->val[]=$value;
-            }
-            else $this->val->$name=$value;
-        }
+        $this->$name->set($value);
     }
 
     public function __unset($name): void{
