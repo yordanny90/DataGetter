@@ -224,7 +224,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @param string $path Ruta de multiples niveles. El separador de la rutas: "/"
      * @return $this
      */
-    public function path(string $path): static{
+    public function path(string $path){
         return $this->route(...explode('/', $path));
     }
 
@@ -233,7 +233,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @param string ...$index
      * @return $this
      */
-    public function route(string ...$index): static{
+    public function route(string ...$index){
         $res=$this;
         foreach($index as $name){
             $res=$res->$name;
@@ -355,7 +355,11 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return null;
     }
 
-    public function __get($name): static{
+    /**
+     * @param $name
+     * @return $this
+     */
+    public function __get($name){
         $res=new static();
         if(is_array($this->val) && isset($this->val[$name])){
             $res->val=&$this->val[$name];
@@ -373,7 +377,11 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
         return false;
     }
 
-    public function offsetGet($offset): static{
+    /**
+     * @param $offset
+     * @return $this
+     */
+    public function offsetGet($offset){
         return $this->__get($offset);
     }
 
@@ -466,7 +474,7 @@ class DataGetter implements ArrayAccess, IteratorAggregate, JsonSerializable{
      * @return $this
      * @see DataGetter::count_depth()
      */
-    public function convert(int $options=0, int $max_depth=256): static{
+    public function convert(int $options=0, int $max_depth=256){
         $arr_rec=$obj_rec=null;
         if(!($options & self::OPT_IGNORE_RECURSION)){
             $arr_rec=preg_match('/=> Array\r?\n \*RECURSION\*\r?\n/', print_r($this->val, true))>0?[]:null;
