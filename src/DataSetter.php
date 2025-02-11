@@ -77,7 +77,11 @@ class DataSetter extends DataGetter{
         return false;
     }
 
-    public function __get($name): static{
+    /**
+     * @param $name
+     * @return $this
+     */
+    public function __get($name){
         $res=parent::__get($name);
         if($res->val===null){
             $res->parent=&$this;
@@ -86,7 +90,7 @@ class DataSetter extends DataGetter{
         return $res;
     }
 
-    private function &fix($name, bool $replace=true): mixed{
+    private function &fix($name, bool $replace=true){
         if($this->parent){
             $this->val=&$this->parent->fix($this->name);
             $this->parent=null;
